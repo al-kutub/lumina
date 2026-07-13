@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07061a" />
+  <meta name="description" content="LUMINA — neon orb merge. Drop, fuse, ascend." />
+  <title>LUMINA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Exo+2:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="nebula" aria-hidden="true"></div>
+    <div class="stars" aria-hidden="true"></div>
+
+    <header class="hud" id="hud" hidden>
+      <div class="hud-block">
+        <span class="hud-label">Score</span>
+        <span class="hud-value" id="score">0</span>
+      </div>
+      <div class="hud-brand">LUMINA</div>
+      <div class="hud-block hud-block--right">
+        <span class="hud-label">Best</span>
+        <span class="hud-value" id="best">0</span>
+      </div>
+    </header>
+
+    <div class="next-preview" id="nextPreview" hidden>
+      <span class="hud-label">Next</span>
+      <canvas id="nextCanvas" width="56" height="56" aria-hidden="true"></canvas>
+    </div>
+
+    <button type="button" class="mute-btn" id="muteBtn" aria-label="Toggle sound" title="Mute">
+      <span id="muteIcon">♪</span>
+    </button>
+
+    <main class="stage">
+      <canvas id="gameCanvas"></canvas>
+      <div class="combo-flash" id="comboFlash" aria-hidden="true"></div>
+    </main>
+
+    <section class="screen screen--title" id="titleScreen">
+      <div class="title-atmosphere" aria-hidden="true"></div>
+      <h1 class="brand">LUMINA</h1>
+      <p class="tagline">Drop. Fuse. Ascend.</p>
+      <button type="button" class="cta" id="startBtn">Play</button>
+      <p class="hint">Aim with pointer · click / tap to drop</p>
+    </section>
+
+    <section class="screen screen--over" id="gameOverScreen" hidden>
+      <p class="over-kicker">Overflow</p>
+      <h2 class="over-title">Game Over</h2>
+      <p class="over-score">Score <span id="finalScore">0</span></p>
+      <p class="over-best" id="newBest" hidden>New best</p>
+      <button type="button" class="cta" id="retryBtn">Retry</button>
+    </section>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
