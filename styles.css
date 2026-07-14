@@ -347,8 +347,20 @@ body {
   text-shadow: 0 0 16px rgba(255, 209, 102, 0.4);
 }
 
+.over-metric {
+  margin: 4px 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.over-metric span {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text);
+}
+
 .over-best {
-  margin: 0 0 24px;
+  margin: 12px 0 24px;
   font-family: var(--font-display);
   font-size: 0.85rem;
   letter-spacing: 0.2em;
