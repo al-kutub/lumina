@@ -51,13 +51,37 @@
     </section>
 
     <section class="screen screen--over" id="gameOverScreen" hidden>
-      <p class="over-kicker">Overflow</p>
-      <h2 class="over-title">Game Over</h2>
-      <p class="over-score">Score <span id="finalScore">0</span></p>
-      <p class="over-metric">Best tier <span id="finalBestTier">—</span></p>
-      <p class="over-metric">Peak combo <span id="finalPeakCombo">0</span></p>
-      <p class="over-best" id="newBest" hidden>New best</p>
-      <button type="button" class="cta" id="retryBtn">Retry</button>
+      <div class="over-card" id="runSummaryCard">
+        <p class="over-brand" aria-hidden="true">LUMINA</p>
+        <p class="over-kicker">Overflow</p>
+        <h2 class="over-title">Run complete</h2>
+
+        <div class="over-stats" id="runStats">
+          <div class="over-score-block">
+            <span class="over-stat-label">Score</span>
+            <span class="over-score-value" id="finalScore">0</span>
+          </div>
+          <div class="over-meta">
+            <div class="over-meta-row">
+              <span class="over-stat-label">Peak tier</span>
+              <span class="over-meta-value" id="finalTier">Spark</span>
+            </div>
+            <div class="over-meta-row">
+              <span class="over-stat-label">Peak combo</span>
+              <span class="over-meta-value" id="finalCombo">×0</span>
+            </div>
+          </div>
+        </div>
+
+        <p class="over-best" id="newBest" hidden>New best</p>
+
+        <div class="over-actions">
+          <button type="button" class="cta" id="retryBtn">Retry</button>
+          <button type="button" class="cta cta--ghost" id="copySummaryBtn">Copy summary</button>
+          <button type="button" class="cta cta--ghost" id="shareBtn" hidden>Share</button>
+        </div>
+        <p class="over-copy-feedback" id="copyFeedback" hidden aria-live="polite">Copied</p>
+      </div>
     </section>
   </div>
 
