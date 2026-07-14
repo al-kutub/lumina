@@ -26,7 +26,8 @@ Or open `index.html` directly in a modern browser (CDN scripts need network for 
 - Matter.js gravity + collisions
 - Merge scoring with short combo window bonuses
 - Game over after resting above the danger line (grace period)
-- Best score in `localStorage`
+- Classic **Play** + UTC **Daily** (seeded drop-tier sequence only; physics remain yours)
+- All-time best + per-UTC-day daily best in `localStorage` (`*_v2` keys)
 - Procedural Web Audio SFX
 - Responsive layout for phone widths
 
