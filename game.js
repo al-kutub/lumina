@@ -65,6 +65,7 @@
     muteIcon: document.getElementById("muteIcon"),
     comboFlash: document.getElementById("comboFlash"),
     app: document.getElementById("app"),
+    stage: document.querySelector(".stage"),
   };
 
   const state = {
@@ -145,6 +146,16 @@
     tone(base, 0.1, "square", 0.04);
     tone(base * 1.33, 0.14, "sine", 0.06, 0.05);
     tone(base * 2, 0.18, "triangle", 0.04, 0.1);
+    // Short high-combo sting (≥3) — louder but still brief
+    if (n >= 3) {
+      tone(base * 2.5, 0.12, "square", 0.05, 0.08);
+      tone(base * 3, 0.16, "sine", 0.045, 0.14);
+    }
+  }
+
+  function sfxDangerWarn() {
+    tone(320, 0.09, "sawtooth", 0.035);
+    tone(260, 0.12, "triangle", 0.04, 0.06);
   }
 
   function sfxGameOver() {
@@ -303,18 +314,30 @@
     }
   }
 
-  function spawnFloatText(x, y, text, color) {
-    state.floatTexts.push({ x, y, text, color, life: 1, vy: -0.7 });
+  function spawnFloatText(x, y, text, color, opts = {}) {
+    state.floatTexts.push({
+      x,
+      y,
+      text,
+      color,
+      life: 1,
+      vy: opts.vy ?? -0.7,
+      size: opts.size ?? 14,
+    });
   }
 
   function pulseCombo(n) {
-    els.app.style.setProperty("--pulse", String(Math.min(1, 0.35 + n * 0.12)));
+    const mega = n >= 3;
+    const intensity = Math.min(1, (mega ? 0.55 : 0.35) + n * 0.1);
+    els.app.style.setProperty("--pulse", String(intensity));
+    els.comboFlash.classList.toggle("is-mega", mega);
     els.comboFlash.classList.add("is-on");
     clearTimeout(pulseCombo._t);
+    // Keep payoff brief so play stays readable mid-clutch
     pulseCombo._t = setTimeout(() => {
       els.app.style.setProperty("--pulse", "0");
-      els.comboFlash.classList.remove("is-on");
-    }, 180);
+      els.comboFlash.classList.remove("is-on", "is-mega");
+    }, mega ? 220 : 160);
   }
 
   function addScore(points, x, y) {
@@ -377,7 +400,12 @@
     if (state.combo > 1) {
       sfxCombo(state.combo);
       pulseCombo(state.combo);
-      spawnFloatText(x, y + 18, `COMBO x${state.combo}`, "#ffd166");
+      const label = state.combo >= 3 ? `MULTI x${state.combo}` : `COMBO x${state.combo}`;
+      const color = state.combo >= 3 ? "#ff7ae8" : "#ffd166";
+      spawnFloatText(x, y + 18, label, color, { size: state.combo >= 3 ? 18 : 14 });
+      if (state.combo >= 3) {
+        spawnFloatText(x, y - TIERS[next].r - 10, "CLUTCH", "#fff4c2", { size: 16, vy: -0.9 });
+      }
     }
 
     queueMicrotask(() => state.merging.delete(key));
@@ -441,9 +469,15 @@
 
   function checkOverflow(now) {
     if (anyOrbAboveDanger()) {
-      if (state.overflowSince == null) state.overflowSince = now;
-      else if (now - state.overflowSince >= OVERFLOW_GRACE_MS) endGame();
+      if (state.overflowSince == null) {
+        state.overflowSince = now;
+        sfxDangerWarn();
+        els.stage?.classList.add("is-danger");
+      } else if (now - state.overflowSince >= OVERFLOW_GRACE_MS) {
+        endGame();
+      }
     } else {
+      if (state.overflowSince != null) els.stage?.classList.remove("is-danger");
       state.overflowSince = null;
     }
   }
@@ -452,6 +486,8 @@
     if (state.mode !== "play") return;
     state.mode = "over";
     state.canDrop = false;
+    state.overflowSince = null;
+    els.stage?.classList.remove("is-danger");
     if (state.previewBody) {
       World.remove(state.engine.world, state.previewBody);
       state.previewBody = null;
@@ -511,6 +547,7 @@
     state.combo = 0;
     state.lastMergeAt = 0;
     state.overflowSince = null;
+    els.stage?.classList.remove("is-danger");
     state.canDrop = true;
     state.currentTier = randomDropTier();
     state.nextTier = randomDropTier();
@@ -596,21 +633,49 @@
     roundRect(ctx, left + 3, top + 3, w - 6, h - 6, 15);
     ctx.stroke();
 
-    // Danger line
-    const pulse = 0.45 + Math.sin(performance.now() / 280) * 0.25;
-    ctx.strokeStyle = `rgba(255, 77, 109, ${0.35 + pulse * 0.45})`;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 8]);
+    // Danger line — stronger pulse / weight while overflow grace is ticking
+    const inDanger = state.overflowSince != null && state.mode === "play";
+    const dangerT = inDanger
+      ? Math.min(1, (performance.now() - state.overflowSince) / OVERFLOW_GRACE_MS)
+      : 0;
+    const pulseSpeed = inDanger ? 140 : 280;
+    const pulse = 0.45 + Math.sin(performance.now() / pulseSpeed) * (inDanger ? 0.4 : 0.25);
+
+    if (inDanger) {
+      // Soft band under the line (readable on ~390px; no full-screen fill)
+      const bandH = Math.max(28, (bottom - top) * 0.12);
+      const band = ctx.createLinearGradient(left, dangerY - bandH, left, dangerY + 4);
+      band.addColorStop(0, "rgba(255, 40, 80, 0)");
+      band.addColorStop(0.7, `rgba(255, 60, 100, ${0.12 + dangerT * 0.22})`);
+      band.addColorStop(1, `rgba(255, 80, 120, ${0.18 + dangerT * 0.2})`);
+      ctx.fillStyle = band;
+      ctx.fillRect(left + 4, dangerY - bandH, w - 8, bandH + 4);
+    }
+
+    ctx.strokeStyle = `rgba(255, 77, 109, ${0.35 + pulse * (inDanger ? 0.6 : 0.45)})`;
+    ctx.lineWidth = inDanger ? 3.5 : 2;
+    ctx.shadowColor = inDanger ? `rgba(255, 60, 100, ${0.55 + pulse * 0.35})` : "transparent";
+    ctx.shadowBlur = inDanger ? 12 + pulse * 8 : 0;
+    ctx.setLineDash(inDanger ? [6, 5] : [8, 8]);
     ctx.beginPath();
     ctx.moveTo(left + 10, dangerY);
     ctx.lineTo(right - 10, dangerY);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
 
-    ctx.fillStyle = `rgba(255, 77, 109, ${0.35 + pulse * 0.3})`;
-    ctx.font = '600 11px "Exo 2", sans-serif';
+    // Grace countdown bar along the danger line
+    if (inDanger) {
+      const barW = (w - 20) * dangerT;
+      ctx.fillStyle = `rgba(255, 209, 102, ${0.55 + pulse * 0.35})`;
+      ctx.fillRect(left + 10, dangerY - 1.5, barW, 3);
+    }
+
+    const label = inDanger ? "OVERFLOW" : "DANGER";
+    ctx.fillStyle = `rgba(255, 77, 109, ${0.4 + pulse * (inDanger ? 0.55 : 0.3)})`;
+    ctx.font = `${inDanger ? "700" : "600"} ${inDanger ? "12" : "11"}px "Exo 2", sans-serif`;
     ctx.letterSpacing = "0.15em";
-    ctx.fillText("DANGER", left + 14, dangerY - 8);
+    ctx.fillText(label, left + 14, dangerY - 8);
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -724,7 +789,7 @@
       ctx.save();
       ctx.globalAlpha = Math.max(0, f.life);
       ctx.fillStyle = f.color;
-      ctx.font = '700 14px "Orbitron", sans-serif';
+      ctx.font = `700 ${f.size || 14}px "Orbitron", sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(f.text, f.x, f.y);
       ctx.restore();
@@ -756,11 +821,15 @@
     drawParticles(ctx);
     drawFloatTexts(ctx);
 
-    // Overflow warn tint
+    // Vessel-local overflow edge flash (progressing with grace) — not a sustained full-screen veil
     if (state.overflowSince != null && state.mode === "play") {
       const t = Math.min(1, (performance.now() - state.overflowSince) / OVERFLOW_GRACE_MS);
-      ctx.fillStyle = `rgba(255, 40, 80, ${0.08 + t * 0.18})`;
-      ctx.fillRect(0, 0, w, h);
+      const { left, right, top, bottom } = state.vessel;
+      const edge = 3 + t * 3;
+      ctx.strokeStyle = `rgba(255, 60, 100, ${0.35 + t * 0.45})`;
+      ctx.lineWidth = edge;
+      roundRect(ctx, left, top, right - left, bottom - top, 18);
+      ctx.stroke();
     }
   }
 

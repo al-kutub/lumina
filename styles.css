@@ -93,8 +93,15 @@ body {
     0 0 40px rgba(60, 240, 255, 0.08),
     0 24px 60px rgba(0, 0, 0, 0.45);
   transform: scale(calc(1 + var(--pulse) * 0.012));
-  transition: transform 120ms ease-out;
+  transition: transform 120ms ease-out, box-shadow 160ms ease-out;
   background: linear-gradient(180deg, rgba(12, 10, 36, 0.55), rgba(8, 6, 24, 0.85));
+}
+
+.stage.is-danger {
+  box-shadow:
+    0 0 0 2px rgba(255, 77, 109, 0.55),
+    0 0 28px rgba(255, 60, 100, 0.35),
+    0 24px 60px rgba(0, 0, 0, 0.45);
 }
 
 #gameCanvas {
@@ -110,11 +117,17 @@ body {
   pointer-events: none;
   background: radial-gradient(circle at 50% 40%, rgba(255, 209, 102, 0.28), transparent 55%);
   opacity: 0;
-  transition: opacity 180ms ease-out;
+  transition: opacity 140ms ease-out;
 }
 
 .combo-flash.is-on {
   opacity: 1;
+}
+
+.combo-flash.is-mega.is-on {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 122, 232, 0.38), transparent 48%),
+    radial-gradient(circle at 50% 55%, rgba(255, 209, 102, 0.22), transparent 62%);
 }
 
 .hud {
@@ -376,5 +389,13 @@ body {
 
   .next-preview {
     right: 10px;
+  }
+
+  /* Mid-mobile: keep danger rim readable without heavier fill */
+  .stage.is-danger {
+    box-shadow:
+      0 0 0 2px rgba(255, 77, 109, 0.65),
+      0 0 18px rgba(255, 60, 100, 0.4),
+      0 16px 40px rgba(0, 0, 0, 0.45);
   }
 }
