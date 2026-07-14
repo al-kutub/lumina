@@ -3,7 +3,25 @@
 
   const { Engine, World, Bodies, Body, Events, Composite } = Matter;
 
-  const STORAGE_KEY = "lumina_best_score_v1";
+  /** Schema-versioned keys (v2). Future daily/badge keys stay namespaced separately. */
+  const STORAGE_BEST_V1 = "lumina_best_score_v1";
+  const STORAGE_BEST_V2 = "lumina_best_score_v2";
+
+  function loadBestScore() {
+    const rawV2 = localStorage.getItem(STORAGE_BEST_V2);
+    if (rawV2 != null) {
+      const n = Number(rawV2);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+    const n1 = Number(localStorage.getItem(STORAGE_BEST_V1) || 0);
+    const migrated = Number.isFinite(n1) && n1 > 0 ? n1 : 0;
+    if (migrated > 0) localStorage.setItem(STORAGE_BEST_V2, String(migrated));
+    return migrated;
+  }
+
+  function saveBestScore(best) {
+    localStorage.setItem(STORAGE_BEST_V2, String(best));
+  }
   const COMBO_WINDOW_MS = 900;
   const OVERFLOW_GRACE_MS = 1000;
   const DROP_COOLDOWN_MS = 280;
@@ -40,6 +58,8 @@
     startBtn: document.getElementById("startBtn"),
     retryBtn: document.getElementById("retryBtn"),
     finalScore: document.getElementById("finalScore"),
+    finalBestTier: document.getElementById("finalBestTier"),
+    finalPeakCombo: document.getElementById("finalPeakCombo"),
     newBest: document.getElementById("newBest"),
     muteBtn: document.getElementById("muteBtn"),
     muteIcon: document.getElementById("muteIcon"),
@@ -50,9 +70,12 @@
   const state = {
     mode: "title", // title | play | over
     score: 0,
-    best: Number(localStorage.getItem(STORAGE_KEY) || 0),
+    best: loadBestScore(),
     startBest: 0,
     beatBest: false,
+    bestTierReached: 0,
+    peakCombo: 0,
+    mergeCount: 0,
     muted: false,
     currentTier: 0,
     nextTier: 0,
@@ -301,7 +324,7 @@
     }
     if (state.score > state.best) {
       state.best = state.score;
-      localStorage.setItem(STORAGE_KEY, String(state.best));
+      saveBestScore(state.best);
     }
     updateHud();
     spawnFloatText(x, y, `+${points}`, TIERS[Math.min(TIERS.length - 1, 3)].glow);
@@ -336,6 +359,9 @@
     if (now - state.lastMergeAt < COMBO_WINDOW_MS) state.combo += 1;
     else state.combo = 1;
     state.lastMergeAt = now;
+    state.mergeCount += 1;
+    if (state.combo > state.peakCombo) state.peakCombo = state.combo;
+    if (next > state.bestTierReached) state.bestTierReached = next;
 
     const orb = createOrb(next, x, y);
     Body.setVelocity(orb, { x: vx * 0.4, y: vy * 0.4 - 1.2 });
@@ -372,7 +398,9 @@
 
     const x = aimWorldX();
     const y = state.vessel.top + 4;
-    const orb = createOrb(state.currentTier, x, y);
+    const dropTier = state.currentTier;
+    if (dropTier > state.bestTierReached) state.bestTierReached = dropTier;
+    const orb = createOrb(dropTier, x, y);
     Body.setVelocity(orb, { x: 0, y: 1.5 });
     World.add(state.engine.world, orb);
 
@@ -428,12 +456,33 @@
       World.remove(state.engine.world, state.previewBody);
       state.previewBody = null;
     }
-    els.finalScore.textContent = String(state.score);
-    els.newBest.hidden = !state.beatBest;
-    if (state.score > 0) {
-      localStorage.setItem(STORAGE_KEY, String(state.best));
-    }
-    els.gameOverScreen.hidden = false;
+
+    const tier = TIERS[state.bestTierReached] || TIERS[0];
+    const run = {
+      score: state.score,
+      bestTierReached: state.bestTierReached,
+      bestTierName: tier.name,
+      peakCombo: state.peakCombo,
+      beatBest: state.beatBest,
+      mergeCount: state.mergeCount,
+      best: state.best,
+    };
+    // Expose for later share card / rival copy (DOM + lastRunMetrics).
+    window.lastRunMetrics = run;
+    const over = els.gameOverScreen;
+    over.dataset.score = String(run.score);
+    over.dataset.bestTierReached = String(run.bestTierReached);
+    over.dataset.bestTierName = run.bestTierName;
+    over.dataset.peakCombo = String(run.peakCombo);
+    over.dataset.beatBest = run.beatBest ? "1" : "0";
+    over.dataset.mergeCount = String(run.mergeCount);
+
+    els.finalScore.textContent = String(run.score);
+    if (els.finalBestTier) els.finalBestTier.textContent = run.bestTierName;
+    if (els.finalPeakCombo) els.finalPeakCombo.textContent = String(run.peakCombo);
+    els.newBest.hidden = !run.beatBest;
+    if (run.score > 0) saveBestScore(state.best);
+    over.hidden = false;
     els.hud.hidden = true;
     els.nextPreview.hidden = true;
     sfxGameOver();
@@ -456,6 +505,9 @@
     state.score = 0;
     state.startBest = state.best;
     state.beatBest = false;
+    state.bestTierReached = 0;
+    state.peakCombo = 0;
+    state.mergeCount = 0;
     state.combo = 0;
     state.lastMergeAt = 0;
     state.overflowSince = null;
