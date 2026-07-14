@@ -6,6 +6,7 @@
   /** Schema-versioned keys (v2). Future daily/badge keys stay namespaced separately. */
   const STORAGE_BEST_V1 = "lumina_best_score_v1";
   const STORAGE_BEST_V2 = "lumina_best_score_v2";
+  const SHARE_URL = "https://al-kutub.github.io/lumina/";
 
   function loadBestScore() {
     const rawV2 = localStorage.getItem(STORAGE_BEST_V2);
@@ -58,9 +59,13 @@
     startBtn: document.getElementById("startBtn"),
     retryBtn: document.getElementById("retryBtn"),
     finalScore: document.getElementById("finalScore"),
-    finalBestTier: document.getElementById("finalBestTier"),
-    finalPeakCombo: document.getElementById("finalPeakCombo"),
+    finalTier: document.getElementById("finalTier"),
+    finalCombo: document.getElementById("finalCombo"),
     newBest: document.getElementById("newBest"),
+    runSummaryCard: document.getElementById("runSummaryCard"),
+    copySummaryBtn: document.getElementById("copySummaryBtn"),
+    shareBtn: document.getElementById("shareBtn"),
+    copyFeedback: document.getElementById("copyFeedback"),
     muteBtn: document.getElementById("muteBtn"),
     muteIcon: document.getElementById("muteIcon"),
     comboFlash: document.getElementById("comboFlash"),
@@ -431,6 +436,9 @@
     const orb = createOrb(dropTier, x, y);
     Body.setVelocity(orb, { x: 0, y: 1.5 });
     World.add(state.engine.world, orb);
+    if (state.currentTier > state.bestTierReached) {
+      state.bestTierReached = state.currentTier;
+    }
 
     if (state.previewBody) {
       World.remove(state.engine.world, state.previewBody);
@@ -482,6 +490,72 @@
     }
   }
 
+  function peakTierName() {
+    const i = Math.max(0, Math.min(TIERS.length - 1, state.bestTierReached));
+    return TIERS[i].name;
+  }
+
+  function buildShareSummary() {
+    const run = window.lastRunMetrics;
+    const score = run ? run.score : state.score;
+    const tierName = run ? run.bestTierName : peakTierName();
+    const peakCombo = run ? run.peakCombo : state.peakCombo;
+    const beatBest = run ? run.beatBest : state.beatBest;
+    const lines = [
+      `LUMINA — Score ${score}`,
+      `Peak tier: ${tierName}`,
+      `Peak combo: ×${peakCombo}`,
+    ];
+    if (beatBest) lines.push("New best!");
+    lines.push(SHARE_URL);
+    return lines.join("\n");
+  }
+
+  function showCopyFeedback() {
+    if (!els.copyFeedback) return;
+    els.copyFeedback.hidden = false;
+    clearTimeout(showCopyFeedback._t);
+    showCopyFeedback._t = setTimeout(() => {
+      els.copyFeedback.hidden = true;
+    }, 1600);
+  }
+
+  async function copyRunSummary() {
+    const text = buildShareSummary();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      showCopyFeedback();
+    } catch (_) {
+      // Clipboard blocked — leave UI usable; user can still Retry.
+    }
+  }
+
+  async function shareRunSummary() {
+    const text = buildShareSummary();
+    if (!navigator.share) return;
+    try {
+      await navigator.share({
+        title: "LUMINA",
+        text,
+        url: SHARE_URL,
+      });
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+    }
+  }
+
   function endGame() {
     if (state.mode !== "play") return;
     state.mode = "over";
@@ -492,7 +566,6 @@
       World.remove(state.engine.world, state.previewBody);
       state.previewBody = null;
     }
-
     const tier = TIERS[state.bestTierReached] || TIERS[0];
     const run = {
       score: state.score,
@@ -503,7 +576,7 @@
       mergeCount: state.mergeCount,
       best: state.best,
     };
-    // Expose for later share card / rival copy (DOM + lastRunMetrics).
+    // Share card + rivals bind through DOM + lastRunMetrics (PR #1 contract).
     window.lastRunMetrics = run;
     const over = els.gameOverScreen;
     over.dataset.score = String(run.score);
@@ -514,9 +587,16 @@
     over.dataset.mergeCount = String(run.mergeCount);
 
     els.finalScore.textContent = String(run.score);
-    if (els.finalBestTier) els.finalBestTier.textContent = run.bestTierName;
-    if (els.finalPeakCombo) els.finalPeakCombo.textContent = String(run.peakCombo);
+    if (els.finalTier) els.finalTier.textContent = run.bestTierName;
+    if (els.finalCombo) els.finalCombo.textContent = `×${run.peakCombo}`;
     els.newBest.hidden = !run.beatBest;
+    if (els.runSummaryCard) {
+      els.runSummaryCard.classList.toggle("is-new-best", run.beatBest);
+    }
+    if (els.shareBtn) {
+      els.shareBtn.hidden = typeof navigator.share !== "function";
+    }
+    if (els.copyFeedback) els.copyFeedback.hidden = true;
     if (run.score > 0) saveBestScore(state.best);
     over.hidden = false;
     els.hud.hidden = true;
@@ -858,6 +938,17 @@
     els.best.textContent = String(state.best);
     els.startBtn.addEventListener("click", () => startGame());
     els.retryBtn.addEventListener("click", () => startGame());
+    if (els.copySummaryBtn) {
+      els.copySummaryBtn.addEventListener("click", () => {
+        copyRunSummary();
+      });
+    }
+    if (els.shareBtn) {
+      els.shareBtn.hidden = typeof navigator.share !== "function";
+      els.shareBtn.addEventListener("click", () => {
+        shareRunSummary();
+      });
+    }
     els.muteBtn.addEventListener("click", () => {
       state.muted = !state.muted;
       els.muteBtn.classList.toggle("is-muted", state.muted);
