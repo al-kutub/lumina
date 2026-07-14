@@ -292,6 +292,15 @@ body {
   color: var(--muted);
 }
 
+.cta-row {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+}
+
 .cta {
   position: relative;
   appearance: none;
@@ -310,6 +319,36 @@ body {
     0 0 28px rgba(60, 240, 255, 0.45);
   cursor: pointer;
   transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.cta--secondary {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid rgba(140, 170, 255, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(60, 240, 255, 0.08),
+    0 0 18px rgba(139, 92, 255, 0.2);
+}
+
+.cta--secondary:hover {
+  border-color: var(--cyan);
+  box-shadow:
+    0 0 0 1px rgba(60, 240, 255, 0.25),
+    0 0 28px rgba(60, 240, 255, 0.35);
+}
+
+.daily-note {
+  position: relative;
+  margin: 16px 0 0;
+  max-width: 22rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  text-shadow: 0 0 12px rgba(255, 209, 102, 0.25);
+}
+
+.daily-note[hidden] {
+  display: none !important;
 }
 
 .cta:hover {

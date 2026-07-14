@@ -3,10 +3,18 @@
 
   const { Engine, World, Bodies, Body, Events, Composite } = Matter;
 
-  /** Schema-versioned keys (v2). Future daily/badge keys stay namespaced separately. */
+  /**
+   * Schema-versioned keys (v2).
+   * Title UX: "Play" = classic unseeded (default); "Daily" = UTC-date-seeded DROP_POOL sequence only.
+   * Physics stay non-deterministic — do not claim identical boards.
+   */
   const STORAGE_BEST_V1 = "lumina_best_score_v1";
   const STORAGE_BEST_V2 = "lumina_best_score_v2";
   const SHARE_URL = "https://al-kutub.github.io/lumina/";
+  /** Map of UTC day (YYYY-MM-DD) → best score for that daily challenge. */
+  const STORAGE_DAILY_BEST_V2 = "lumina_daily_best_v2";
+  /** One-shot product disclosure for Daily mode. */
+  const STORAGE_DAILY_NOTE_V2 = "lumina_daily_note_seen_v2";
 
   function loadBestScore() {
     const rawV2 = localStorage.getItem(STORAGE_BEST_V2);
@@ -22,6 +30,58 @@
 
   function saveBestScore(best) {
     localStorage.setItem(STORAGE_BEST_V2, String(best));
+  }
+
+  function utcDayString(d = new Date()) {
+    return d.toISOString().slice(0, 10);
+  }
+
+  function loadDailyBestMap() {
+    try {
+      const raw = localStorage.getItem(STORAGE_DAILY_BEST_V2);
+      if (!raw) return {};
+      const obj = JSON.parse(raw);
+      return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function getDailyBest(day) {
+    const n = Number(loadDailyBestMap()[day] || 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function saveDailyBest(day, score) {
+    const map = loadDailyBestMap();
+    const prev = Number(map[day] || 0);
+    if (!(score > prev)) return;
+    map[day] = score;
+    const keys = Object.keys(map).sort();
+    while (keys.length > 60) {
+      delete map[keys.shift()];
+    }
+    localStorage.setItem(STORAGE_DAILY_BEST_V2, JSON.stringify(map));
+  }
+
+  /** FNV-1a 32-bit for seed string → uint32. */
+  function hashSeed(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  /** Mulberry32 — used ONLY for DROP_POOL picks in Daily mode. */
+  function mulberry32(seed) {
+    return function () {
+      let t = (seed += 0x6d2b79f5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
   }
   const COMBO_WINDOW_MS = 900;
   const OVERFLOW_GRACE_MS = 1000;
@@ -52,11 +112,14 @@
     nextCanvas: document.getElementById("nextCanvas"),
     score: document.getElementById("score"),
     best: document.getElementById("best"),
+    bestLabel: document.getElementById("bestLabel"),
     hud: document.getElementById("hud"),
     nextPreview: document.getElementById("nextPreview"),
     titleScreen: document.getElementById("titleScreen"),
     gameOverScreen: document.getElementById("gameOverScreen"),
     startBtn: document.getElementById("startBtn"),
+    dailyBtn: document.getElementById("dailyBtn"),
+    dailyNote: document.getElementById("dailyNote"),
     retryBtn: document.getElementById("retryBtn"),
     finalScore: document.getElementById("finalScore"),
     finalTier: document.getElementById("finalTier"),
@@ -75,6 +138,12 @@
 
   const state = {
     mode: "title", // title | play | over
+    /** @type {"classic" | "daily"} */
+    playMode: "classic",
+    dailyDay: "",
+    dropRand: null,
+    dailyDropSeq: [],
+    allTimeBest: loadBestScore(),
     score: 0,
     best: loadBestScore(),
     startBest: 0,
@@ -170,7 +239,15 @@
   }
 
   function randomDropTier() {
-    return DROP_POOL[(Math.random() * DROP_POOL.length) | 0];
+    const r = state.dropRand ? state.dropRand() : Math.random();
+    const tier = DROP_POOL[(r * DROP_POOL.length) | 0];
+    if (state.playMode === "daily") {
+      state.dailyDropSeq.push(tier);
+      // QA/debug: same UTC day → identical ordered sequence across clients.
+      window.__LUMINA_DAILY_SEQ__ = state.dailyDropSeq.slice();
+      window.__LUMINA_DAILY_SEED__ = state.dailyDay ? `lumina|${state.dailyDay}` : null;
+    }
+    return tier;
   }
 
   function resize() {
@@ -299,7 +376,20 @@
   function updateHud() {
     els.score.textContent = String(state.score);
     els.best.textContent = String(state.best);
+    if (els.bestLabel) {
+      els.bestLabel.textContent = state.playMode === "daily" ? "Daily" : "Best";
+    }
     drawNextPreview();
+  }
+
+  function showDailyNoteOnce() {
+    if (!els.dailyNote) return;
+    if (localStorage.getItem(STORAGE_DAILY_NOTE_V2) === "1") {
+      els.dailyNote.hidden = true;
+      return;
+    }
+    els.dailyNote.hidden = false;
+    localStorage.setItem(STORAGE_DAILY_NOTE_V2, "1");
   }
 
   function spawnParticles(x, y, color, count = 14) {
@@ -352,7 +442,16 @@
     }
     if (state.score > state.best) {
       state.best = state.score;
-      saveBestScore(state.best);
+      if (state.playMode === "daily") {
+        saveDailyBest(state.dailyDay, state.best);
+      } else {
+        saveBestScore(state.best);
+      }
+    }
+    // All-time best always advances (Daily does not wipe it).
+    if (state.score > state.allTimeBest) {
+      state.allTimeBest = state.score;
+      saveBestScore(state.allTimeBest);
     }
     updateHud();
     spawnFloatText(x, y, `+${points}`, TIERS[Math.min(TIERS.length - 1, 3)].glow);
@@ -575,6 +674,9 @@
       beatBest: state.beatBest,
       mergeCount: state.mergeCount,
       best: state.best,
+      playMode: state.playMode,
+      dailyDay: state.dailyDay || null,
+      allTimeBest: state.allTimeBest,
     };
     // Share card + rivals bind through DOM + lastRunMetrics (PR #1 contract).
     window.lastRunMetrics = run;
@@ -590,6 +692,9 @@
     if (els.finalTier) els.finalTier.textContent = run.bestTierName;
     if (els.finalCombo) els.finalCombo.textContent = `×${run.peakCombo}`;
     els.newBest.hidden = !run.beatBest;
+    if (els.newBest && !els.newBest.hidden) {
+      els.newBest.textContent = run.playMode === "daily" ? "New daily best" : "New best";
+    }
     if (els.runSummaryCard) {
       els.runSummaryCard.classList.toggle("is-new-best", run.beatBest);
     }
@@ -597,7 +702,10 @@
       els.shareBtn.hidden = typeof navigator.share !== "function";
     }
     if (els.copyFeedback) els.copyFeedback.hidden = true;
-    if (run.score > 0) saveBestScore(state.best);
+    if (run.score > 0) {
+      if (run.playMode === "daily") saveDailyBest(state.dailyDay, state.best);
+      saveBestScore(state.allTimeBest);
+    }
     over.hidden = false;
     els.hud.hidden = true;
     els.nextPreview.hidden = true;
@@ -615,9 +723,25 @@
     state.merging.clear();
   }
 
-  function startGame() {
+  function startGame(playMode = "classic") {
     ensureAudio();
     state.mode = "play";
+    state.playMode = playMode === "daily" ? "daily" : "classic";
+    state.dailyDay = utcDayString();
+    state.dailyDropSeq = [];
+    state.allTimeBest = loadBestScore();
+
+    if (state.playMode === "daily") {
+      const seedStr = `lumina|${state.dailyDay}`;
+      state.dropRand = mulberry32(hashSeed(seedStr));
+      state.best = getDailyBest(state.dailyDay);
+      showDailyNoteOnce();
+    } else {
+      state.dropRand = null;
+      state.best = state.allTimeBest;
+      if (els.dailyNote) els.dailyNote.hidden = true;
+    }
+
     state.score = 0;
     state.startBest = state.best;
     state.beatBest = false;
@@ -936,8 +1060,11 @@
 
   function initUI() {
     els.best.textContent = String(state.best);
-    els.startBtn.addEventListener("click", () => startGame());
-    els.retryBtn.addEventListener("click", () => startGame());
+    els.startBtn.addEventListener("click", () => startGame("classic"));
+    if (els.dailyBtn) {
+      els.dailyBtn.addEventListener("click", () => startGame("daily"));
+    }
+    els.retryBtn.addEventListener("click", () => startGame(state.playMode));
     if (els.copySummaryBtn) {
       els.copySummaryBtn.addEventListener("click", () => {
         copyRunSummary();
