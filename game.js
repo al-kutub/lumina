@@ -15,6 +15,23 @@
   const STORAGE_DAILY_BEST_V2 = "lumina_daily_best_v2";
   /** One-shot product disclosure for Daily mode. */
   const STORAGE_DAILY_NOTE_V2 = "lumina_daily_note_seen_v2";
+  /** Unlocked mastery badge ids (≤6, idempotent). */
+  const STORAGE_BADGES_V2 = "lumina_badges_v2";
+  /** Map of UTC day → last completed run score (classic or daily). */
+  const STORAGE_LAST_RUN_BY_DAY_V2 = "lumina_last_run_by_day_v2";
+
+  /** Exactly 6 mastery badges — unlock once, persist under v2 schema. */
+  const BADGES = [
+    { id: "first_merge", label: "First fuse", hint: "Merge once" },
+    { id: "reach_nova", label: "Nova", hint: "Reach Nova" },
+    { id: "reach_lumina", label: "Lumina", hint: "Reach Lumina" },
+    { id: "combo_5", label: "×5 combo", hint: "Peak combo ≥5" },
+    { id: "beat_best", label: "New peak", hint: "Beat all-time best" },
+    { id: "finish_daily", label: "Daily done", hint: "Finish a Daily" },
+  ];
+  const BADGE_BY_ID = Object.fromEntries(BADGES.map((b) => [b.id, b]));
+  const TIER_NOVA = 4;
+  const TIER_LUMINA = 10;
 
   function loadBestScore() {
     const rawV2 = localStorage.getItem(STORAGE_BEST_V2);
@@ -62,6 +79,128 @@
       delete map[keys.shift()];
     }
     localStorage.setItem(STORAGE_DAILY_BEST_V2, JSON.stringify(map));
+  }
+
+  function previousUtcDay(day) {
+    const d = new Date(`${day}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function loadLastRunByDay() {
+    try {
+      const raw = localStorage.getItem(STORAGE_LAST_RUN_BY_DAY_V2);
+      if (!raw) return {};
+      const obj = JSON.parse(raw);
+      return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function getLastRunScore(day) {
+    const n = Number(loadLastRunByDay()[day] || 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function saveLastRunScore(day, score) {
+    if (!(score > 0) || !day) return;
+    const map = loadLastRunByDay();
+    map[day] = score;
+    const keys = Object.keys(map).sort();
+    while (keys.length > 14) {
+      delete map[keys.shift()];
+    }
+    localStorage.setItem(STORAGE_LAST_RUN_BY_DAY_V2, JSON.stringify(map));
+  }
+
+  function loadBadges() {
+    try {
+      const raw = localStorage.getItem(STORAGE_BADGES_V2);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      const uniq = [];
+      for (const id of arr) {
+        if (typeof id !== "string" || !BADGE_BY_ID[id] || uniq.includes(id)) continue;
+        uniq.push(id);
+        if (uniq.length >= 6) break;
+      }
+      return uniq;
+    } catch {
+      return [];
+    }
+  }
+
+  function saveBadges(ids) {
+    const cleaned = [];
+    for (const id of ids) {
+      if (!BADGE_BY_ID[id] || cleaned.includes(id)) continue;
+      cleaned.push(id);
+      if (cleaned.length >= 6) break;
+    }
+    localStorage.setItem(STORAGE_BADGES_V2, JSON.stringify(cleaned));
+    return cleaned;
+  }
+
+  /** Idempotent unlock. Returns true only on first unlock. */
+  function unlockBadge(id) {
+    if (!BADGE_BY_ID[id]) return false;
+    const ids = loadBadges();
+    if (ids.includes(id)) return false;
+    if (ids.length >= 6) return false;
+    ids.push(id);
+    saveBadges(ids);
+    return true;
+  }
+
+  function evaluateBadgeUnlocks(run) {
+    const newly = [];
+    const tryUnlock = (id) => {
+      if (unlockBadge(id)) newly.push(id);
+    };
+    if (run.mergeCount >= 1) tryUnlock("first_merge");
+    if (run.bestTierReached >= TIER_NOVA) tryUnlock("reach_nova");
+    if (run.bestTierReached >= TIER_LUMINA) tryUnlock("reach_lumina");
+    if (run.peakCombo >= 5) tryUnlock("combo_5");
+    if (run.beatAllTime) tryUnlock("beat_best");
+    if (run.playMode === "daily") tryUnlock("finish_daily");
+    return newly;
+  }
+
+  function renderBadgeRail(container, { highlightIds = [], emptyHidden = true } = {}) {
+    if (!container) return;
+    const unlocked = loadBadges();
+    window.__LUMINA_BADGES__ = unlocked.slice();
+    if (!unlocked.length && emptyHidden) {
+      container.hidden = true;
+      container.innerHTML = "";
+      return;
+    }
+    container.hidden = false;
+    const hi = new Set(highlightIds);
+    container.innerHTML = BADGES.map((b) => {
+      const on = unlocked.includes(b.id);
+      const fresh = hi.has(b.id);
+      const cls = ["badge-chip", on ? "is-on" : "is-off", fresh ? "is-new" : ""]
+        .filter(Boolean)
+        .join(" ");
+      return `<span class="${cls}" data-badge="${b.id}" title="${b.hint}">${b.label}</span>`;
+    }).join("");
+  }
+
+  function buildRivalLine(run) {
+    const parts = [];
+    if (run.beatAllTime) parts.push("Beat all-time best");
+    if (run.beatYesterday) {
+      parts.push(
+        run.yesterdayScore > 0
+          ? `Beat yesterday (${run.yesterdayScore})`
+          : "Beat yesterday"
+      );
+    }
+    if (!parts.length) return "";
+    return parts.join(" · ");
   }
 
   /** FNV-1a 32-bit for seed string → uint32. */
@@ -134,6 +273,9 @@
     comboFlash: document.getElementById("comboFlash"),
     app: document.getElementById("app"),
     stage: document.querySelector(".stage"),
+    titleBadges: document.getElementById("titleBadges"),
+    rivalLine: document.getElementById("rivalLine"),
+    overBadges: document.getElementById("overBadges"),
   };
 
   const state = {
@@ -144,10 +286,14 @@
     dropRand: null,
     dailyDropSeq: [],
     allTimeBest: loadBestScore(),
+    startAllTimeBest: 0,
     score: 0,
     best: loadBestScore(),
     startBest: 0,
     beatBest: false,
+    beatAllTime: false,
+    beatYesterday: false,
+    yesterdayScore: 0,
     bestTierReached: 0,
     peakCombo: 0,
     mergeCount: 0,
@@ -665,6 +811,16 @@
       World.remove(state.engine.world, state.previewBody);
       state.previewBody = null;
     }
+
+    const day = state.dailyDay || utcDayString();
+    const yesterdayScore = getLastRunScore(previousUtcDay(day));
+    // Rival framing only when prior data exists — never invent fake comparisons.
+    const beatAllTime = state.startAllTimeBest > 0 && state.score > state.startAllTimeBest;
+    const beatYesterday = yesterdayScore > 0 && state.score > yesterdayScore;
+    state.beatAllTime = beatAllTime;
+    state.beatYesterday = beatYesterday;
+    state.yesterdayScore = yesterdayScore;
+
     const tier = TIERS[state.bestTierReached] || TIERS[0];
     const run = {
       score: state.score,
@@ -672,6 +828,9 @@
       bestTierName: tier.name,
       peakCombo: state.peakCombo,
       beatBest: state.beatBest,
+      beatAllTime,
+      beatYesterday,
+      yesterdayScore,
       mergeCount: state.mergeCount,
       best: state.best,
       playMode: state.playMode,
@@ -687,6 +846,8 @@
     over.dataset.peakCombo = String(run.peakCombo);
     over.dataset.beatBest = run.beatBest ? "1" : "0";
     over.dataset.mergeCount = String(run.mergeCount);
+    over.dataset.beatAllTime = beatAllTime ? "1" : "0";
+    over.dataset.beatYesterday = beatYesterday ? "1" : "0";
 
     els.finalScore.textContent = String(run.score);
     if (els.finalTier) els.finalTier.textContent = run.bestTierName;
@@ -702,9 +863,26 @@
       els.shareBtn.hidden = typeof navigator.share !== "function";
     }
     if (els.copyFeedback) els.copyFeedback.hidden = true;
+
+    const rivalText = buildRivalLine(run);
+    if (els.rivalLine) {
+      if (rivalText) {
+        els.rivalLine.hidden = false;
+        els.rivalLine.textContent = rivalText;
+      } else {
+        els.rivalLine.hidden = true;
+        els.rivalLine.textContent = "";
+      }
+    }
+
+    const newly = evaluateBadgeUnlocks(run);
+    renderBadgeRail(els.overBadges, { highlightIds: newly, emptyHidden: true });
+    renderBadgeRail(els.titleBadges, { emptyHidden: true });
+
     if (run.score > 0) {
       if (run.playMode === "daily") saveDailyBest(state.dailyDay, state.best);
       saveBestScore(state.allTimeBest);
+      saveLastRunScore(day, run.score);
     }
     over.hidden = false;
     els.hud.hidden = true;
@@ -744,7 +922,11 @@
 
     state.score = 0;
     state.startBest = state.best;
+    state.startAllTimeBest = state.allTimeBest;
     state.beatBest = false;
+    state.beatAllTime = false;
+    state.beatYesterday = false;
+    state.yesterdayScore = 0;
     state.bestTierReached = 0;
     state.peakCombo = 0;
     state.mergeCount = 0;
@@ -1060,6 +1242,7 @@
 
   function initUI() {
     els.best.textContent = String(state.best);
+    renderBadgeRail(els.titleBadges, { emptyHidden: true });
     els.startBtn.addEventListener("click", () => startGame("classic"));
     if (els.dailyBtn) {
       els.dailyBtn.addEventListener("click", () => startGame("daily"));

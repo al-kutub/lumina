@@ -545,6 +545,69 @@ body {
   to { opacity: 1; letter-spacing: 0.24em; }
 }
 
+.over-rival {
+  margin: 0 0 14px;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--magenta);
+  text-shadow: 0 0 14px rgba(255, 61, 200, 0.35);
+}
+
+.over-rival[hidden] {
+  display: none !important;
+}
+
+.badge-rail {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: min(420px, 92vw);
+  margin: 18px 0 8px;
+}
+
+.badge-rail--over {
+  margin: 0 0 16px;
+}
+
+.badge-rail[hidden] {
+  display: none !important;
+}
+
+.badge-chip {
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border: 1px solid rgba(140, 170, 255, 0.28);
+  color: var(--muted);
+  background: rgba(12, 10, 32, 0.55);
+}
+
+.badge-chip.is-on {
+  color: var(--cyan);
+  border-color: rgba(60, 240, 255, 0.45);
+  text-shadow: 0 0 10px rgba(60, 240, 255, 0.35);
+}
+
+.badge-chip.is-off {
+  opacity: 0.4;
+}
+
+.badge-chip.is-new {
+  color: var(--gold);
+  border-color: rgba(255, 209, 102, 0.55);
+  animation: badge-new 520ms ease-out both;
+}
+
+@keyframes badge-new {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .over-actions {
   display: flex;
   flex-wrap: wrap;
@@ -614,7 +677,8 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .over-card,
   .over-best,
-  .over-card.is-new-best .over-score-value {
+  .over-card.is-new-best .over-score-value,
+  .badge-chip.is-new {
     animation: none;
   }
 }

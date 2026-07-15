@@ -28,6 +28,7 @@ Or open `index.html` directly in a modern browser (CDN scripts need network for 
 - Game over after resting above the danger line (grace period)
 - Classic **Play** + UTC **Daily** (seeded drop-tier sequence only; physics remain yours)
 - All-time best + per-UTC-day daily best in `localStorage` (`*_v2` keys)
+- Local mastery badges (≤6) + personal rival line on results (beat best / beat yesterday)
 - Procedural Web Audio SFX
 - Responsive layout for phone widths
 
